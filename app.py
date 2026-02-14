@@ -1,13 +1,33 @@
 import streamlit as st
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta, UTC
 import feedparser
 import time
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta, UTC
+from google import genai
 
-# --- SEITE KONFIGURIEREN ---
-st.set_page_config(page_title="Gold Terminal", layout="wide", page_icon="💰")
+# --- KONFIGURATION & INITIALISIERUNG ---
+st.set_page_config(page_title="Gold Intelligence Terminal", layout="wide", page_icon="🤖")
+
+# Nutze Streamlit Secrets oder direkte Eingabe (für GitHub/Streamlit Cloud empfohlen)
+# Falls du es lokal testest, kannst du den Key hier eintragen oder st.secrets nutzen
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# --- FUNKTIONEN ---
+
+def get_exact_model_name():
+    """Findet den exakten Namen für Gemini 3 Flash in deinem Account."""
+    try:
+        for m in client.models.list():
+            # Suche nach gemini-3 und flash im Namen
+            if "gemini-3" in m.name.lower() and "flash" in m.name.lower():
+                return m.name
+        # Fallback auf Standard, falls Liste scheitert
+        return "gemini-2.0-flash" 
+    except Exception:
+        return "gemini-1.5-flash"
 
 # --- FUNKTION: YAHOO SCRAPER ---
 def scrape_yahoo_gold_page():
@@ -27,7 +47,7 @@ def scrape_yahoo_gold_page():
         news_list = []
         for h3 in soup.find_all('h3'):
             title = h3.get_text(strip=True)
-            if len(title) > 20 and len(news_list) < 15: 
+            if len(title) > 20: 
                 news_list.append(title)
         
         return {"timestamp": datetime.now().strftime('%d.%m. %H:%M'), "price": current_price, "news": news_list}
@@ -42,7 +62,7 @@ def get_finanzen_ch_news_data():
         response = requests.get(rss_url, headers=headers, timeout=10)
         feed = feedparser.parse(response.content)
         news_items = []
-        for entry in feed.entries[:8]:
+        for entry in feed.entries:
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
                 date_str = time.strftime('%d.%m.%y | %H:%M', entry.published_parsed)
             else:
@@ -60,6 +80,7 @@ def get_finanzen_ch_news_data():
         return news_items
     except:
         return []
+    
     
 # --- FUNKTION: TRADINGVIEW KALENDER ---
 def get_gold_calendar():
@@ -90,65 +111,61 @@ def get_gold_calendar():
     except:
         return []
 
-# --- STREAMLIT UI ---
+# --- UI ---
+st.title("🤖 Gold AI Intelligence Terminal")
 
-# 1. Titel & Update-Button ganz oben
-col_title, col_btn = st.columns([4, 1])
+if st.button("🚀 Markt-Analyse starten", use_container_width=True):
+    with st.spinner("Sammle Daten und generiere KI-Analyse..."):
 
-with col_title:
-    st.title("💰 Gold Market Terminal")
+        news_yahoo = scrape_yahoo_gold_page()
+        news_finanzen_ch= get_finanzen_ch_news_data()
+        calendar_output = get_gold_calendar()
 
-with col_btn:
-    # Button bündig zum Titel platzieren
-    st.write("##") # Kleiner Platzhalter für die Ausrichtung
-    if st.button("🔄 Aktualisieren", use_container_width=True):
-        st.rerun()
+        # Dynamische Modellfindung
+        model_name = get_exact_model_name()
 
-st.divider()
+        prompt = f"""
+        1. Analysiere folgende News zum aktuellen Goldpreis. 
+        Bewerte jede Nachricht ob sie sich bullisch oder bärisch auf den Goldpreis auswirkt. 
+        Zwischenbewrtung des Einflusses auf den Goldpreis.
+        {news_yahoo}
 
-# --- SEKTION 1: PREIS & NEWS ---
-col1, col2 = st.columns([1, 2])
+        2. Analysiere folgende News. 
+        Bewerte jede Nachricht ob sie sich bullisch oder bärisch auf den Goldpreis auswirkt. 
+        Zwischenbewrtung des Einflusses auf den Goldpreis.
+        {news_finanzen_ch}
 
-with col1:
-    st.subheader("Live Preis (Yahoo)")
-    data = scrape_yahoo_gold_page()
-    if "error" in data and data["price"] == "Fehler":
-        st.error(data["error"])
-    else:
-        # Große Anzeige des Preises
-        st.metric(label="Gold Future (GC=F)", value=f"${data['price']}")
-        st.caption(f"Stand: {data.get('timestamp')}")
+        3. Werte die Daten aus dem Wirtschaftskalender aus.
+        Bewerte jedes Ereignis ob es sich bullisch oder bärisch auf den Goldpreis auswirkt.
+        Zwischenbewrtung des Einflusses auf den Goldpreis.
+        {calendar_output}
 
-with col2:
-    st.subheader("Gold News")
-    if data["news"]:
-        for n in data["news"]:
-            st.markdown(f"**•** {n}")
-    else:
-        st.info("Keine News gefunden oder Yahoo blockiert.")
+        4. Gib am Ende eine Gesamtbewertung ab, ob der Goldpreis wahrscheinlich steigen oder fallen wird.
+        """
 
-st.divider()
 
-# --- MITTE: FINANZEN.CH RSS FEED ---
-st.subheader("📰 Finanzen.ch - Ausführliche Marktnachrichten")
-f_news = get_finanzen_ch_news_data()
-if f_news:
-    for item in f_news:
-        with st.expander(f"{item['date']} | {item['title']}"):
-            st.write(item['desc'])
-            st.markdown(f"[Zum Artikel]({item['link']})")
+        try:
+            response = client.models.generate_content(model=model_name.replace("models/", ""), contents=prompt)
+            
+            # Anzeige der Analyse
+            st.success("Analyse abgeschlossen!")
+            st.markdown("### Gemini KI Markt-Einschätzung")
+            st.write(response.text)
+            
+        except Exception as e:
+            st.error(f"KI Fehler: {e}")
+
+        st.divider()
+        st.write("### Rohdaten") 
+        st.write("Yahoo:") 
+        st.write(news_yahoo) 
+        st.write("Finanzen.ch:") 
+        st.write(news_finanzen_ch) 
+        st.write("Wirtschaftskalender:") 
+        st.write(calendar_output) 
+
+    st.divider()
+    
+
 else:
-    st.info("Keine Nachrichten von finanzen.ch verfügbar.")
-
-st.divider()
-
-# --- SEKTION 2: KALENDER ---
-st.subheader("📅 Wirtschaftskalender (Nächste 7 Tage)")
-cal_data = get_gold_calendar()
-
-if cal_data:
-    df = pd.DataFrame(cal_data)
-    # Interaktive Tabelle anzeigen
-    st.dataframe(df, use_container_width=True, hide_index=True)
-else:
-    st.error("Kalenderdaten konnten nicht geladen werden. Bitte versuche es in wenigen Minuten erneut.")
+    st.info("Klicke auf den Button oben, um die Datenquellen abzufragen und die Gemini-Analyse zu starten.")
