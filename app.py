@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import feedparser
 import time
+import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, UTC
 from google import genai
@@ -10,9 +11,9 @@ from google import genai
 # --- KONFIGURATION & INITIALISIERUNG ---
 st.set_page_config(page_title="Gold Intelligence Terminal", layout="wide", page_icon="🤖")
 
-# Nutze Streamlit Secrets oder direkte Eingabe (für GitHub/Streamlit Cloud empfohlen)
-# Falls du es lokal testest, kannst du den Key hier eintragen oder st.secrets nutzen
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+# --- KEY ---
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] # Streamlit Secrets
+#GEMINI_API_KEY = "" # lokal
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- FUNKTIONEN ---
@@ -111,20 +112,49 @@ def get_gold_calendar():
     except:
         return []
 
+# --- course data ---
+def get_course_data():
+    # Ticker abrufen
+    tickers = ["GC=F", "DX-Y.NYB", "^VIX"]
+    # Wir nehmen 5 Tage mit 1h Intervall
+    data = yf.download(tickers, period="5d", interval="1h", group_by='ticker')
+
+    df = pd.DataFrame()
+
+    # Daten extrahieren und Lücken füllen
+    # ffill() füllt NaN-Werte mit dem letzten bekannten Kurs auf
+    df['Gold'] = data['GC=F']['Close'].ffill()
+    df['USD_Index'] = data['DX-Y.NYB']['Close'].ffill()
+    df['VIX'] = data['^VIX']['Close'].ffill()
+
+    # Wichtige KI-Features berechnen
+    df['Gold_Ret_%'] = df['Gold'].pct_change() * 100
+    df['VIX_Change'] = df['VIX'].diff()
+
+    # Nur Zeilen behalten, wo wir für alle drei Ticker Daten haben
+    df.dropna(inplace=True)
+    df_rounded = df.round(3)
+    return df_rounded
+
+
 # --- UI ---
 st.title("🤖 Gold AI Intelligence Terminal")
 
 if st.button("🚀 Markt-Analyse starten", use_container_width=True):
-    with st.spinner("Sammle Daten und generiere KI-Analyse..."):
+    with st.spinner("Sammle Daten..."):
 
         news_yahoo = scrape_yahoo_gold_page()
         news_finanzen_ch= get_finanzen_ch_news_data()
         calendar_output = get_gold_calendar()
+        course_data = get_course_data()
 
+    with st.spinner("KI-Analyse..."):
         # Dynamische Modellfindung
         model_name = get_exact_model_name()
 
         prompt = f"""
+        Analysiere anhand folgender Daten, ob der Goldpreis kurzfristig (1 Tag), mittelfritig (1 Woche) und langfristig (3 Wochen) wahrscheinlich steigen oder fallen wird.
+
         1. Analysiere folgende News zum aktuellen Goldpreis. 
         Bewerte jede Nachricht ob sie sich bullisch oder bärisch auf den Goldpreis auswirkt. 
         Zwischenbewrtung des Einflusses auf den Goldpreis.
@@ -140,20 +170,23 @@ if st.button("🚀 Markt-Analyse starten", use_container_width=True):
         Zwischenbewrtung des Einflusses auf den Goldpreis.
         {calendar_output}
 
-        4. Gib am Ende eine Gesamtbewertung ab, ob der Goldpreis wahrscheinlich steigen oder fallen wird.
+        4. Kursdaten: 
+        {course_data}
+
         """
 
-
-        try:
-            response = client.models.generate_content(model=model_name.replace("models/", ""), contents=prompt)
-            
-            # Anzeige der Analyse
-            st.success("Analyse abgeschlossen!")
-            st.markdown("### Gemini KI Markt-Einschätzung")
-            st.write(response.text)
-            
-        except Exception as e:
-            st.error(f"KI Fehler: {e}")
+        # Gemini request
+        if True:
+            try:
+                response = client.models.generate_content(model=model_name.replace("models/", ""), contents=prompt)
+                
+                # Anzeige der Analyse
+                st.success("Analyse abgeschlossen!")
+                st.markdown("### Gemini KI Markt-Einschätzung")
+                st.write(response.text)
+                
+            except Exception as e:
+                st.error(f"KI Fehler: {e}")
 
         st.divider()
         st.write("### Rohdaten") 
@@ -163,6 +196,8 @@ if st.button("🚀 Markt-Analyse starten", use_container_width=True):
         st.write(news_finanzen_ch) 
         st.write("Wirtschaftskalender:") 
         st.write(calendar_output) 
+        st.write("Kursdaten:") 
+        st.write(course_data) 
 
     st.divider()
     
