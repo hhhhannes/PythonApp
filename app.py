@@ -153,26 +153,29 @@ if st.button("🚀 Markt-Analyse starten", use_container_width=True):
         model_name = get_exact_model_name()
 
         prompt = f"""
-        Analysiere anhand folgender Daten, ob der Goldpreis kurzfristig (1 Tag), mittelfritig (1 Woche) und langfristig (3 Wochen) wahrscheinlich steigen oder fallen wird.
+        Rolle: Handle als erfahrener Finanzanalyst mit Spezialisierung auf Edelmetalle und Makroökonomie.
 
-        1. Analysiere folgende News zum aktuellen Goldpreis. 
-        Bewerte jede Nachricht ob sie sich bullisch oder bärisch auf den Goldpreis auswirkt. 
-        Zwischenbewrtung des Einflusses auf den Goldpreis.
-        {news_yahoo}
+        Aufgabe: Erstelle eine fundierte Goldpreis-Prognose für die Zeiträume 1 Tag, 1 Woche und 3 Wochen.
 
-        2. Analysiere folgende News. 
-        Bewerte jede Nachricht ob sie sich bullisch oder bärisch auf den Goldpreis auswirkt. 
-        Zwischenbewrtung des Einflusses auf den Goldpreis.
-        {news_finanzen_ch}
+        Datenbasis:
+        1. Yahoo News: {news_yahoo}
+        2. Finanzen.ch News: {news_finanzen_ch}
+        3. Wirtschaftskalender: {calendar_output}
+        4. Aktuelle Kursdaten (Gold, USD_Index, VIX): {course_data}
 
-        3. Werte die Daten aus dem Wirtschaftskalender aus.
-        Bewerte jedes Ereignis ob es sich bullisch oder bärisch auf den Goldpreis auswirkt.
-        Zwischenbewrtung des Einflusses auf den Goldpreis.
-        {calendar_output}
+        Analyse-Schritte:
+        Schritt 1: Analysiere die News-Quellen (1 & 2). Klassifiziere jede Meldung als [BULLISCH], [BÄRISCH] oder [NEUTRAL]. Vergib einen Relevanz-Score von 1-10.
+        Schritt 2: Werte den Wirtschaftskalender (3) aus. Welche Ereignisse (z.B. Fed-Sitzung, Inflation) sind "High-Impact" für Gold?
+        Schritt 3: Kombiniere die News-Stimmung mit den Kursdaten (4). Achte auf Divergenzen (z.B. steigender VIX bei fallendem Gold).
 
-        4. Kursdaten: 
-        {course_data}
-
+        Ausgabeformat:
+        - Kurze Zusammenfassung der aktuellen Marktstimmung.
+        - Eine Tabelle der wichtigsten Einflussfaktoren mit Sentiment und Gewichtung.
+        - Prognose-Fazit:
+        * 1 Tag: [Richtung + Begründung]
+        * 1 Woche: [Richtung + Begründung]
+        * 3 Wochen: [Richtung + Begründung]
+        - Disclaimer: Weise darauf hin, dass dies keine Anlageberatung ist.
         """
 
         # Gemini request
